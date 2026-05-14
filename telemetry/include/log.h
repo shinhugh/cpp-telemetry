@@ -2,6 +2,7 @@
 
 #include "log_severity.h"
 #include "log_value.h"
+#include "span.h"
 
 #include <chrono>
 #include <cstddef>
@@ -27,13 +28,23 @@ namespace telemetry
 
 template <typename... Fields>
 void Log(
-    std::chrono::system_clock::time_point, LogSeverity,
+    const Span &, std::chrono::system_clock::time_point, LogSeverity,
     const std::string &event, Fields &&...);
 
 template <typename... Fields>
 void Log(
-    std::chrono::system_clock::time_point, LogSeverity, std::string &&event,
-    Fields &&...);
+    const Span &, std::chrono::system_clock::time_point, LogSeverity,
+    std::string &&event, Fields &&...);
+
+template <typename... Fields>
+void Log(
+    Span &&, std::chrono::system_clock::time_point, LogSeverity,
+    const std::string &event, Fields &&...);
+
+template <typename... Fields>
+void Log(
+    Span &&, std::chrono::system_clock::time_point, LogSeverity,
+    std::string &&event, Fields &&...);
 
 template <typename T>
 std::pair<std::string, LogValue> Field(
@@ -203,7 +214,8 @@ void FlushLogs();
 
 void RegisterLogHandler(
     std::function<void(
-        std::chrono::system_clock::time_point, LogSeverity, const std::string &,
+        const Span &, std::chrono::system_clock::time_point, LogSeverity,
+        const std::string &,
         const std::vector<std::pair<std::string, LogValue>> &)> &&);
 
 // -----------------------------------------------------------------------------
@@ -223,6 +235,7 @@ namespace telemetry::impl
 
 struct LogEntry
 {
+  Span m_span;
   std::chrono::system_clock::time_point m_time;
   LogSeverity m_severity;
   std::string m_event;
@@ -276,27 +289,57 @@ extern std::mutex g_logEntriesMutex;
 
 template <typename... Fields>
 void telemetry::Log(
-    std::chrono::system_clock::time_point time, LogSeverity severity,
-    const std::string &event, Fields &&...fields)
+    const Span &span, std::chrono::system_clock::time_point time,
+    LogSeverity severity, const std::string &event, Fields &&...fields)
 {
   std::vector<std::pair<std::string, LogValue>> fieldList;
   impl::AddFieldsToList(fieldList, std::forward<Fields>(fields)...);
   std::lock_guard lock{impl::g_logEntriesMutex};
-  impl::g_logEntries.push_back({time, severity, event, std::move(fieldList)});
+  impl::g_logEntries.push_back(
+      {span, time, severity, event, std::move(fieldList)});
 }
 
 // -----------------------------------------------------------------------------
 
 template <typename... Fields>
 void telemetry::Log(
-    std::chrono::system_clock::time_point time, LogSeverity severity,
-    std::string &&event, Fields &&...fields)
+    const Span &span, std::chrono::system_clock::time_point time,
+    LogSeverity severity, std::string &&event, Fields &&...fields)
 {
   std::vector<std::pair<std::string, LogValue>> fieldList;
   impl::AddFieldsToList(fieldList, std::forward<Fields>(fields)...);
   std::lock_guard lock{impl::g_logEntriesMutex};
   impl::g_logEntries.push_back(
-      {time, severity, std::move(event), std::move(fieldList)});
+      {span, time, severity, std::move(event), std::move(fieldList)});
+}
+
+// -----------------------------------------------------------------------------
+
+template <typename... Fields>
+void telemetry::Log(
+    Span &&span, std::chrono::system_clock::time_point time,
+    LogSeverity severity, const std::string &event, Fields &&...fields)
+{
+  std::vector<std::pair<std::string, LogValue>> fieldList;
+  impl::AddFieldsToList(fieldList, std::forward<Fields>(fields)...);
+  std::lock_guard lock{impl::g_logEntriesMutex};
+  impl::g_logEntries.push_back(
+      {std::move(span), time, severity, event, std::move(fieldList)});
+}
+
+// -----------------------------------------------------------------------------
+
+template <typename... Fields>
+void telemetry::Log(
+    Span &&span, std::chrono::system_clock::time_point time,
+    LogSeverity severity, std::string &&event, Fields &&...fields)
+{
+  std::vector<std::pair<std::string, LogValue>> fieldList;
+  impl::AddFieldsToList(fieldList, std::forward<Fields>(fields)...);
+  std::lock_guard lock{impl::g_logEntriesMutex};
+  impl::g_logEntries.push_back(
+      {std::move(span), time, severity, std::move(event),
+          std::move(fieldList)});
 }
 
 // -----------------------------------------------------------------------------

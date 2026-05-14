@@ -2,6 +2,7 @@
 
 #include "log_severity.h"
 #include "log_value.h"
+#include "span.h"
 
 #include <chrono>
 #include <functional>
@@ -16,8 +17,8 @@
 std::vector<telemetry::impl::LogEntry> telemetry::impl::g_logEntries;
 std::mutex telemetry::impl::g_logEntriesMutex;
 static std::vector<std::function<void(
-    std::chrono::system_clock::time_point, telemetry::LogSeverity,
-    const std::string &,
+    const telemetry::Span &, std::chrono::system_clock::time_point,
+    telemetry::LogSeverity, const std::string &,
     const std::vector<std::pair<std::string, telemetry::LogValue>> &)>>
     s_logHandlers;
 static std::mutex s_logHandlersMutex;
@@ -159,13 +160,14 @@ void telemetry::FlushLogs()
     {
       for (
           std::function<void(
-              std::chrono::system_clock::time_point, LogSeverity,
+              const Span &, std::chrono::system_clock::time_point, LogSeverity,
               const std::string &,
               const std::vector<std::pair<std::string, LogValue>> &)>
               &logHandler : s_logHandlers)
       {
         logHandler(
-            entry.m_time, entry.m_severity, entry.m_event, entry.m_fields);
+            entry.m_span, entry.m_time, entry.m_severity, entry.m_event,
+            entry.m_fields);
       }
     }
   }
@@ -175,7 +177,8 @@ void telemetry::FlushLogs()
 
 void telemetry::RegisterLogHandler(
     std::function<void(
-        std::chrono::system_clock::time_point, LogSeverity, const std::string &,
+        const Span &, std::chrono::system_clock::time_point, LogSeverity,
+        const std::string &,
         const std::vector<std::pair<std::string, LogValue>> &)> &&logHandler)
 {
   std::lock_guard lock{s_logHandlersMutex};
